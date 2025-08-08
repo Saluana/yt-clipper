@@ -1,0 +1,21 @@
+{
+    "name": "yt-clipper",
+    "module": "index.ts",
+    "type": "module",
+    "private": true,
+    "workspaces": [
+        "packages/*"
+    ],
+    "scripts": {
+        "build": "bun run --cwd packages/contracts build && bun run --cwd packages/common build",
+        "test": "bunx vitest run",
+        "test:watch": "bunx vitest"
+    },
+    "devDependencies": {
+        "@types/bun": "latest",
+        "vitest": "^2.0.5"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    }
+}
