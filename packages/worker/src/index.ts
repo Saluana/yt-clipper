@@ -45,8 +45,20 @@ async function main() {
 }
 
 if (import.meta.main) {
-    main().catch((e) => {
-        log.error('worker crashed', { err: String(e) });
-        process.exit(1);
-    });
+    const run = async () => {
+        try {
+            await main();
+        } catch (e) {
+            log.error('worker crashed', { err: String(e) });
+            process.exit(1);
+        }
+    };
+    const stop = async () => {
+        log.info('worker stopping');
+        await queue.shutdown();
+        process.exit(0);
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+    run();
 }

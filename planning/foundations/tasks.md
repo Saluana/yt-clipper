@@ -45,6 +45,7 @@ artifact_id: 2a4bba3e-6fe6-45e2-89ab-72d6396e8a35
 
 -   [ ] Configure linting and formatting (eslint, prettier) minimal rules (R7)
 -   [x] Ensure exports are ESM and tree-shakeable, add `exports` maps (R7)
+-   [x] Monorepo TS resolution: workspace linking for @clipper/\*, avoid cross-package src bleed; builds use compiled outputs (R7)
 -   [ ] Add minimal READMEs for both packages (R7)
 
 ## 9. Examples & Docs

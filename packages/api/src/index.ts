@@ -29,6 +29,11 @@ function tcToSec(tc: string) {
 
 export const app = new Elysia()
     .use(cors())
+    .get('/healthz', async () => {
+        const h = await queue.health();
+        return { ok: h.ok, queue: h };
+    })
+    .get('/metrics/queue', () => queue.getMetrics())
     .post('/api/jobs', async ({ body, set }) => {
         const parsed = Schemas.CreateJobInput.safeParse(body);
         if (!parsed.success) {
@@ -87,11 +92,18 @@ export const app = new Elysia()
                     Number(process.env.RETENTION_HOURS || 72) * 3600_000
             ).toISOString(),
         };
-    })
-    .get('/healthz', () => ({ ok: true }));
+    });
 
 if (import.meta.main) {
     const port = Number(process.env.PORT || 3000);
-    Bun.serve({ fetch: app.fetch, port });
+    const server = Bun.serve({ fetch: app.fetch, port });
     log.info('API started', { port });
+    const stop = async () => {
+        log.info('API stopping');
+        server.stop(true);
+        await queue.shutdown();
+        process.exit(0);
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
 }

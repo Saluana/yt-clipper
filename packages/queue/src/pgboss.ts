@@ -11,6 +11,14 @@ export class PgBossQueueAdapter implements QueueAdapter {
     private boss?: PgBoss;
     private topic: string;
     private dlqTopic: string;
+    private metrics = {
+        publishes: 0,
+        claims: 0,
+        completes: 0,
+        retries: 0,
+        errors: 0,
+        dlq: 0,
+    };
 
     constructor(
         private readonly opts: {
@@ -31,6 +39,12 @@ export class PgBossQueueAdapter implements QueueAdapter {
         this.boss = new PgBoss({
             connectionString: this.opts.connectionString,
             schema: this.opts.schema ?? process.env.PG_BOSS_SCHEMA ?? 'pgboss',
+        });
+        this.boss.on('error', (err) => {
+            // Increment error metric on boss-level errors
+            this.metrics.errors++;
+            // Avoid importing logger to keep package lean; rely on caller logs
+            console.error('[pgboss] error', err);
         });
         await this.boss.start();
         // Ensure queues exist with basic policies
@@ -94,6 +108,7 @@ export class PgBossQueueAdapter implements QueueAdapter {
             retryBackoff: true,
             deadLetter: this.dlqTopic,
         });
+        this.metrics.publishes++;
     }
 
     async consume(
@@ -108,7 +123,16 @@ export class PgBossQueueAdapter implements QueueAdapter {
             { batchSize },
             async (jobs) => {
                 for (const job of jobs) {
-                    await handler(job.data as QueueMessage);
+                    this.metrics.claims++;
+                    try {
+                        await handler(job.data as QueueMessage);
+                        this.metrics.completes++;
+                    } catch (err) {
+                        // A thrown error triggers retry/DLQ in pg-boss
+                        this.metrics.retries++;
+                        this.metrics.errors++;
+                        throw err;
+                    }
                 }
                 // Throw inside handler to trigger retry; returning resolves completions
             }
@@ -120,5 +144,24 @@ export class PgBossQueueAdapter implements QueueAdapter {
             await this.boss.stop();
             this.boss = undefined;
         }
+    }
+
+    async health(): Promise<{ ok: boolean; error?: string }> {
+        try {
+            if (!this.boss) await this.start();
+            // Simple ping by fetching the state; if it throws, not healthy
+            // getQueue takes a name and returns settings; use topic
+            await this.boss!.getQueue(this.topic);
+            return { ok: true };
+        } catch (e) {
+            return {
+                ok: false,
+                error: e instanceof Error ? e.message : String(e),
+            };
+        }
+    }
+
+    getMetrics() {
+        return { ...this.metrics };
     }
 }
