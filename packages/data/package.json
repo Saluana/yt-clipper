@@ -1,5 +1,5 @@
 {
-    "name": "@clipper/contracts",
+    "name": "@clipper/data",
     "version": "0.0.0",
     "type": "module",
     "private": true,
@@ -18,8 +18,8 @@
         "build": "tsc -p tsconfig.json"
     },
     "dependencies": {
-        "zod": "^3.23.8",
-        "zod-to-openapi": "^0.2.1"
+        "@clipper/common": "*",
+        "@clipper/contracts": "*"
     },
     "devDependencies": {
         "typescript": "^5"

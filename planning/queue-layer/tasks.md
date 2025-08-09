@@ -21,9 +21,9 @@
 
 ## 3. Integration with Data Layer
 
--   [ ] On `POST /api/jobs`, persist job row then `publish({ jobId, priority })`
--   [ ] Worker `consume` handler: load job from DB, check idempotency, process, update status, ack (by returning)
--   [ ] Emit progress events to `job_events`
+-   [x] On `POST /api/jobs`, persist job row then `publish({ jobId, priority })` (temporary in-memory repo)
+-   [x] Worker `consume` handler: load job from DB (in-memory now), check idempotency, process, update status, ack (by returning)
+-   [x] Emit progress events to `job_events` (in-memory now)
 
 ## 4. Health & observability
 
