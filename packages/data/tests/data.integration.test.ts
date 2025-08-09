@@ -161,4 +161,21 @@ describe('Data Layer Integration', () => {
             ', '
         )}`, () => {});
     }
+
+    // Smoke test for storage bootstrap script
+    const hasBucket = !!SUPABASE_STORAGE_BUCKET;
+    if (hasSupabaseCore && hasBucket) {
+        test('storage bootstrap script runs', async () => {
+            const { bootstrapStorage } = await import(
+                '../src/scripts/bootstrap-storage'
+            );
+            await bootstrapStorage({
+                bucket: SUPABASE_STORAGE_BUCKET!,
+                createPrefixes: true,
+            });
+            expect(true).toBe(true);
+        }, 30_000);
+    } else {
+        test.skip('storage bootstrap skipped (missing SUPABASE_STORAGE_BUCKET or core envs)', () => {});
+    }
 });

@@ -31,11 +31,11 @@
 
 ## 4. Local development setup
 
--   [ ] Add `.env` entries: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`
+-   [x] Add `.env` entries: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`
     -   Requirements: Non-functional
--   [ ] Provide a bootstrap script to create buckets `sources`, `results` if missing
+-   [x] Provide a bootstrap script to create buckets `sources`, `results` if missing
     -   Requirements: 5, 7
--   [ ] Document how to run migrations and seed minimal data
+-   [x] Document how to run migrations and seed minimal data
     -   Requirements: 7
 
 ## 5. Cleanup and retention
