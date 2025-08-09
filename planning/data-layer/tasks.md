@@ -22,11 +22,11 @@
 
 ## 3. Storage helpers (Supabase Storage)
 
--   [ ] Provide canonical key builders (`sources/{jobId}/source.ext`, `results/{jobId}/clip.*`)
+-   [x] Provide canonical key builders (`sources/{jobId}/source.ext`, `results/{jobId}/clip.*`)
     -   Requirements: 5
--   [ ] Implement `StorageRepo` methods: `upload`, `sign`, `remove`
+-   [x] Implement `StorageRepo` methods: `upload`, `sign`, `remove`
     -   Requirements: 5, 9
--   [ ] Add configuration for signed URL TTL (default 10 minutes)
+-   [x] Add configuration for signed URL TTL (default 10 minutes)
     -   Requirements: 9
 
 ## 4. Local development setup

@@ -5,9 +5,9 @@ import * as schema from './schema';
 export type DB = ReturnType<typeof drizzle<typeof schema>>;
 
 export function createDb(url = process.env.DATABASE_URL): DB {
-  if (!url) {
-    throw new Error('DATABASE_URL is required');
-  }
-  const pool = new Pool({ connectionString: url });
-  return drizzle(pool, { schema });
+    if (!url) {
+        throw new Error('DATABASE_URL is required');
+    }
+    const pool = new Pool({ connectionString: url });
+    return drizzle(pool, { schema });
 }

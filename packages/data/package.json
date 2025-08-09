@@ -21,6 +21,7 @@
     "dependencies": {
         "@clipper/common": "*",
         "@clipper/contracts": "*",
+        "@supabase/supabase-js": "^2.54.0",
         "drizzle-orm": "^0.44.4",
         "pg": "^8.16.3"
     },

@@ -32,7 +32,11 @@ export interface JobsRepository {
     create(row: Omit<JobRow, 'createdAt' | 'updatedAt'>): Promise<JobRow>;
     get(id: string): Promise<JobRow | null>;
     update(id: string, patch: Partial<JobRow>): Promise<JobRow>;
-    listByStatus(status: JobStatus, limit?: number, offset?: number): Promise<JobRow[]>;
+    listByStatus(
+        status: JobStatus,
+        limit?: number,
+        offset?: number
+    ): Promise<JobRow[]>;
     transition(
         id: string,
         next: JobStatus,
@@ -70,7 +74,11 @@ export class InMemoryJobsRepo implements JobsRepository {
         this.map.set(id, next);
         return next;
     }
-    async listByStatus(status: JobStatus, limit = 50, offset = 0): Promise<JobRow[]> {
+    async listByStatus(
+        status: JobStatus,
+        limit = 50,
+        offset = 0
+    ): Promise<JobRow[]> {
         return Array.from(this.map.values())
             .filter((r) => r.status === status)
             .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
