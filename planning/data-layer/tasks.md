@@ -13,11 +13,11 @@
 
 ## 2. Repository implementations
 
--   [ ] Implement `JobsRepo` with `create`, `get`, `update`, `listByStatus`, `transition`
+-   [x] Implement `JobsRepo` with `create`, `get`, `update`, `listByStatus`, `transition`
     -   Requirements: 1, 6, 8
--   [ ] Implement `JobEventsRepo` with `add`, `list`
+-   [x] Implement `JobEventsRepo` with `add`, `list`
     -   Requirements: 2, 6
--   [ ] Implement transactional state transitions (update + event)
+-   [x] Implement transactional state transitions (update + event)
     -   Requirements: 8
 
 ## 3. Storage helpers (Supabase Storage)
