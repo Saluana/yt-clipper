@@ -1,9 +1,15 @@
 import PgBoss from 'pg-boss';
-import { createLogger } from '@clipper/common';
+import { createLogger, type LogLevel } from '@clipper/common';
 
-const log = createLogger((process.env.LOG_LEVEL || 'info') as string).with({
-    mod: 'queue-dlq',
-});
+const envLevel = process.env.LOG_LEVEL;
+const level: LogLevel =
+    envLevel === 'debug' ||
+    envLevel === 'info' ||
+    envLevel === 'warn' ||
+    envLevel === 'error'
+        ? envLevel
+        : 'info';
+const log = createLogger(level).with({ mod: 'queue-dlq' });
 
 export async function startDlqConsumer(opts?: {
     connectionString?: string;
