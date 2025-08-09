@@ -1,0 +1,27 @@
+{
+    "name": "@clipper/queue",
+    "version": "0.0.0",
+    "type": "module",
+    "private": true,
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js"
+        }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc -p tsconfig.json"
+    },
+    "dependencies": {
+        "pg-boss": "^10.0.0",
+        "@clipper/common": "*"
+    },
+    "devDependencies": {
+        "typescript": "^5"
+    }
+}

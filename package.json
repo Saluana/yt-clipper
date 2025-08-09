@@ -7,7 +7,7 @@
         "packages/*"
     ],
     "scripts": {
-        "build": "bun run --cwd packages/contracts build && bun run --cwd packages/common build",
+        "build": "bun run --cwd packages/contracts build && bun run --cwd packages/common build && bun run --cwd packages/queue build",
         "test": "bunx vitest run",
         "test:watch": "bunx vitest"
     },

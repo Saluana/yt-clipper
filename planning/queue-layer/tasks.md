@@ -4,15 +4,20 @@
 
 ## 1. Dependencies & config
 
--   [ ] Add dependency: pg-boss
--   [ ] Env: `QUEUE_PROVIDER=pgboss`, `PG_BOSS_SCHEMA=pgboss`, `QUEUE_NAME=clips`, `QUEUE_VISIBILITY_SEC=90`, `QUEUE_MAX_ATTEMPTS=3`, `QUEUE_RETRY_BACKOFF_MS_BASE=1000`, `QUEUE_RETRY_BACKOFF_MS_MAX=60000`, `QUEUE_CONCURRENCY=4`
+-   [x] Add dependency: pg-boss
+-   [x] Env: `QUEUE_PROVIDER=pgboss`, `PG_BOSS_SCHEMA=pgboss`, `QUEUE_NAME=clips`, `QUEUE_VISIBILITY_SEC=90`, `QUEUE_MAX_ATTEMPTS=3`, `QUEUE_RETRY_BACKOFF_MS_BASE=1000`, `QUEUE_RETRY_BACKOFF_MS_MAX=60000`, `QUEUE_CONCURRENCY=4`
 
 ## 2. Abstraction & adapter
 
--   [ ] Define `QueueAdapter` interface
--   [ ] Implement `PgBossQueueAdapter` with `publish`, `consume`, `shutdown`
--   [ ] Map priorities fast|normal|bulk to numeric priority
--   [ ] Support DLQ publish to `clips.dlq` after retries exhausted
+-   [x] Define `QueueAdapter` interface
+-   [x] Implement `PgBossQueueAdapter` with `publish`, `consume`, `shutdown`
+-   [x] Map priorities fast|normal|bulk to numeric priority
+-   [x] Support DLQ publish to `clips.dlq` after retries exhausted
+
+## 2b. DLQ Consumer & Docs
+
+-   [x] Add `startDlqConsumer()` to consume `clips.dlq` and log/alert
+-   [x] Add README to `@clipper/queue` with usage and envs
 
 ## 3. Integration with Data Layer
 
