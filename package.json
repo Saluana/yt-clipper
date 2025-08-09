@@ -9,11 +9,14 @@
     "scripts": {
         "build": "bun run --cwd packages/contracts build && bun run --cwd packages/common build && bun run --cwd packages/data build && bun run --cwd packages/queue build && bun run --cwd packages/worker build && bun run --cwd packages/api build",
         "test": "bunx vitest run",
-        "test:watch": "bunx vitest"
+        "test:watch": "bunx vitest",
+        "db:generate": "bunx drizzle-kit generate --config=drizzle.config.ts",
+        "db:push": "bunx drizzle-kit push --config=drizzle.config.ts"
     },
     "devDependencies": {
         "@types/bun": "latest",
         "dotenv": "^17.2.1",
+        "drizzle-kit": "^0.31.4",
         "vitest": "^2.0.5"
     },
     "peerDependencies": {

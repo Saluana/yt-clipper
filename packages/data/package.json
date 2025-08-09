@@ -15,11 +15,14 @@
         "dist"
     ],
     "scripts": {
-        "build": "tsc -p tsconfig.json"
+        "build": "tsc -p tsconfig.json",
+    "db:generate": "bunx drizzle-kit generate --config=drizzle.config.ts"
     },
     "dependencies": {
         "@clipper/common": "*",
-        "@clipper/contracts": "*"
+        "@clipper/contracts": "*",
+        "drizzle-orm": "^0.44.4",
+        "pg": "^8.16.3"
     },
     "devDependencies": {
         "typescript": "^5"
