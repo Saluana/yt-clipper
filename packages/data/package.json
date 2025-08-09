@@ -16,7 +16,7 @@
     ],
     "scripts": {
         "build": "tsc -p tsconfig.json",
-    "db:generate": "bunx drizzle-kit generate --config=drizzle.config.ts"
+        "db:generate": "bunx drizzle-kit generate --config=drizzle.config.ts"
     },
     "dependencies": {
         "@clipper/common": "*",

@@ -1,7 +1,22 @@
-import { pgEnum, pgTable, text, timestamp, uuid, integer, boolean, jsonb, index } from 'drizzle-orm/pg-core';
+import {
+    pgEnum,
+    pgTable,
+    text,
+    timestamp,
+    uuid,
+    integer,
+    boolean,
+    jsonb,
+    index,
+} from 'drizzle-orm/pg-core';
 
 // Enums
-export const jobStatus = pgEnum('job_status', ['queued', 'processing', 'done', 'failed']);
+export const jobStatus = pgEnum('job_status', [
+    'queued',
+    'processing',
+    'done',
+    'failed',
+]);
 export const sourceType = pgEnum('source_type', ['upload', 'youtube']);
 
 // jobs table
@@ -23,12 +38,19 @@ export const jobs = pgTable(
         resultSrtKey: text('result_srt_key'),
         errorCode: text('error_code'),
         errorMessage: text('error_message'),
-        createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-        updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+        createdAt: timestamp('created_at', { withTimezone: true })
+            .notNull()
+            .defaultNow(),
+        updatedAt: timestamp('updated_at', { withTimezone: true })
+            .notNull()
+            .defaultNow(),
         expiresAt: timestamp('expires_at', { withTimezone: true }),
     },
     (t: any) => ({
-        idxStatusCreatedAt: index('idx_jobs_status_created_at').on(t.status, t.createdAt),
+        idxStatusCreatedAt: index('idx_jobs_status_created_at').on(
+            t.status,
+            t.createdAt
+        ),
         idxExpiresAt: index('idx_jobs_expires_at').on(t.expiresAt),
     })
 );
@@ -37,7 +59,9 @@ export const jobs = pgTable(
 export const jobEvents = pgTable(
     'job_events',
     {
-        jobId: uuid('job_id').notNull().references(() => jobs.id, { onDelete: 'cascade' }),
+        jobId: uuid('job_id')
+            .notNull()
+            .references(() => jobs.id, { onDelete: 'cascade' }),
         ts: timestamp('ts', { withTimezone: true }).notNull().defaultNow(),
         type: text('type').notNull(),
         data: jsonb('data'),
@@ -53,7 +77,9 @@ export const apiKeys = pgTable('api_keys', {
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
     revoked: boolean('revoked').notNull().default(false),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+        .notNull()
+        .defaultNow(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
 });
 

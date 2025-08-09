@@ -4,11 +4,11 @@
 
 ## 1. Initialize schema and migrations
 
--   [ ] Create Drizzle schema files for `jobs`, `job_events`, `api_keys` (optional)
+-   [x] Create Drizzle schema files for `jobs`, `job_events`, `api_keys` (optional)
     -   Requirements: 1, 2, 3
--   [ ] Add indices: `idx_jobs_status_created_at`, `idx_jobs_expires_at`, `idx_job_events_job_id_ts`
+-   [x] Add indices: `idx_jobs_status_created_at`, `idx_jobs_expires_at`, `idx_job_events_job_id_ts`
     -   Requirements: 4
--   [ ] Generate and commit Drizzle migrations
+-   [x] Generate and commit Drizzle migrations
     -   Requirements: 7
 
 ## 2. Repository implementations
