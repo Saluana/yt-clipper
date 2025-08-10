@@ -7,3 +7,4 @@ export * from './cleanup';
 export * from './api-keys';
 export * from './media-io';
 export { resolveUploadSource } from './media-io-upload';
+export { resolveYouTubeSource } from './media-io-youtube';

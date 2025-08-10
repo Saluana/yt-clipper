@@ -20,7 +20,8 @@
         "db:push": "bunx drizzle-kit push --config=drizzle.config.ts",
         "storage:bootstrap": "bun src/scripts/bootstrap-storage.ts",
         "db:seed": "bun src/scripts/seed.ts",
-        "cleanup": "bun src/scripts/cleanup.ts"
+        "cleanup": "bun src/scripts/cleanup.ts",
+        "admin:jobs": "bun src/scripts/admin-jobs.ts"
     },
     "dependencies": {
         "@clipper/common": "*",

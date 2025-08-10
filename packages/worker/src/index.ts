@@ -1,13 +1,13 @@
 import { createLogger, readEnv, requireEnv } from '@clipper/common';
-import { InMemoryJobsRepo, InMemoryJobEventsRepo } from '@clipper/data';
+import { DrizzleJobsRepo, DrizzleJobEventsRepo, createDb } from '@clipper/data';
 import { PgBossQueueAdapter } from '@clipper/queue';
 
 const log = createLogger((readEnv('LOG_LEVEL') as any) || 'info').with({
     mod: 'worker',
 });
 
-const jobs = new InMemoryJobsRepo();
-const events = new InMemoryJobEventsRepo();
+const jobs = new DrizzleJobsRepo(createDb());
+const events = new DrizzleJobEventsRepo(createDb());
 const queue = new PgBossQueueAdapter({
     connectionString: requireEnv('DATABASE_URL'),
 });

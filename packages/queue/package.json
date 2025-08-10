@@ -15,7 +15,8 @@
         "dist"
     ],
     "scripts": {
-        "build": "tsc -p tsconfig.json"
+        "build": "tsc -p tsconfig.json",
+        "publish": "bun src/publish.ts"
     },
     "dependencies": {
         "pg-boss": "^10.0.0",

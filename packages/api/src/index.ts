@@ -2,15 +2,15 @@ import { Elysia, t } from 'elysia';
 import cors from '@elysiajs/cors';
 import { Schemas, CreateJobInputType } from '@clipper/contracts';
 import { createLogger, readEnv, readIntEnv, requireEnv } from '@clipper/common';
-import { InMemoryJobsRepo, InMemoryJobEventsRepo } from '@clipper/data';
+import { DrizzleJobsRepo, DrizzleJobEventsRepo, createDb } from '@clipper/data';
 import { PgBossQueueAdapter } from '@clipper/queue';
 
 const log = createLogger((readEnv('LOG_LEVEL') as any) || 'info').with({
     mod: 'api',
 });
 
-const jobsRepo = new InMemoryJobsRepo();
-const eventsRepo = new InMemoryJobEventsRepo();
+const jobsRepo = new DrizzleJobsRepo(createDb());
+const eventsRepo = new DrizzleJobEventsRepo(createDb());
 const queue = new PgBossQueueAdapter({
     connectionString: requireEnv('DATABASE_URL'),
 });

@@ -18,11 +18,11 @@
 
 ## 3. Implement Resolver (YouTube path — gated)
 
--   [ ] Add gate check: reject with `YTDLP_DISABLED` when disabled.
--   [ ] Implement SSRF guard (scheme, IP class, optional allowlist).
--   [ ] Shell out to `yt-dlp` with guarded flags and output template.
--   [ ] Enforce size/timeout; pick resulting file path.
--   [ ] ffprobe validation and return.
+-   [x] Add gate check: reject with `YTDLP_DISABLED` when disabled.
+-   [x] Implement SSRF guard (scheme, IP class, optional allowlist).
+-   [x] Shell out to `yt-dlp` with guarded flags and output template.
+-   [x] Enforce size/timeout; pick resulting file path.
+-   [x] ffprobe validation and return.
 -   Requirements: 2, 3, 4, 6
 
 ## 4. ffprobe Meta & Caps

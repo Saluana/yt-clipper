@@ -85,6 +85,34 @@ describe('Data Layer Integration', () => {
             await db.delete(jobs).where(eq(jobs.id, jobId));
         });
 
+        test('db repos: create job with youtube source_url is stored and retrievable', async () => {
+            const db = createDb();
+            const jobsRepo = new DrizzleJobsRepo(db);
+
+            const jobId = crypto.randomUUID();
+            const yt = 'https://www.youtube.com/watch?v=8tx2viHpgA8';
+            const created = await jobsRepo.create({
+                id: jobId,
+                status: 'queued',
+                progress: 0,
+                sourceType: 'youtube',
+                sourceUrl: yt,
+                startSec: 0,
+                endSec: 2,
+                withSubtitles: false,
+                burnSubtitles: false,
+            });
+            expect(created.id).toBe(jobId);
+            expect(created.sourceType).toBe('youtube');
+            expect(created.sourceUrl).toBe(yt);
+
+            const got = await jobsRepo.get(jobId);
+            expect(got?.sourceUrl).toBe(yt);
+
+            // cleanup row
+            await db.delete(jobs).where(eq(jobs.id, jobId));
+        });
+
         test("cleanup job: dry-run returns items but doesn't delete", async () => {
             const db = createDb();
             const jobsRepo = new DrizzleJobsRepo(db);
@@ -171,6 +199,34 @@ describe('Data Layer Integration', () => {
             const again = await repo.verify(token);
             expect(again).toBeNull();
         });
+
+        // Manual, opt-in test to create a persistent job for visual verification in Supabase UI
+        const persistJob = readEnv('PERSIST_TEST_JOB') === 'true';
+        (persistJob ? test : test.skip)(
+            'manual: create persistent youtube job (no cleanup — set PERSIST_TEST_JOB=true to run)',
+            async () => {
+                const db = createDb();
+                const jobsRepo = new DrizzleJobsRepo(db);
+                const jobId = crypto.randomUUID();
+                const yt = 'https://www.youtube.com/watch?v=8tx2viHpgA8';
+                const created = await jobsRepo.create({
+                    id: jobId,
+                    status: 'queued',
+                    progress: 0,
+                    sourceType: 'youtube',
+                    sourceUrl: yt,
+                    startSec: 0,
+                    endSec: 2,
+                    withSubtitles: false,
+                    burnSubtitles: false,
+                });
+                // Print the job ID so you can find it in Supabase UI
+                // eslint-disable-next-line no-console
+                console.log('[PERSISTED_JOB]', { jobId: created.id, yt });
+                expect(created.id).toBe(jobId);
+            },
+            30_000
+        );
     } else {
         test.skip('DB tests skipped (DATABASE_URL missing)', () => {});
     }
