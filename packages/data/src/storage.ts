@@ -1,6 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { readEnv } from '@clipper/common';
-import { readFile as nodeReadFile } from 'node:fs/promises';
 
 export const storageKeys = {
     source: (jobId: string, ext: string) =>
@@ -20,6 +19,7 @@ export type SupabaseStorageOptions = {
     serviceRoleKey?: string;
     bucket?: string;
     defaultTtlSec?: number; // default 600 (10 minutes)
+    client?: SupabaseClient; // optional injection for testing
 };
 
 export function createSupabaseStorageRepo(
@@ -37,7 +37,7 @@ export function createSupabaseStorageRepo(
         );
     }
 
-    const client = createClient(url, key);
+    const client = opts.client ?? createClient(url, key);
     return new SupabaseStorageRepo(client, bucket, defaultTtlSec);
 }
 
@@ -53,17 +53,19 @@ class SupabaseStorageRepo implements StorageRepo {
         key: string,
         contentType?: string
     ): Promise<void> {
-        const bun: any = (globalThis as any).Bun;
-        let blob: Blob;
         const type = contentType ?? guessContentType(key);
-        if (bun?.file) {
+        const bun: any = (globalThis as any).Bun;
+        const forceNode = readEnv('FORCE_NODE_FS') === '1';
+        let blob: Blob;
+        if (!forceNode && bun?.file) {
             const file = bun.file(localPath);
             if (!(await file.exists())) {
                 throw new Error(`FILE_NOT_FOUND: ${localPath}`);
             }
             blob = new Blob([await file.arrayBuffer()], { type });
         } else {
-            const data = await nodeReadFile(localPath);
+            const { readFile } = await import('node:fs/promises');
+            const data = await readFile(localPath);
             blob = new Blob([data], { type });
         }
         const { error } = await this.supabase.storage

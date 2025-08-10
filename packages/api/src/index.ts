@@ -1,18 +1,18 @@
 import { Elysia, t } from 'elysia';
 import cors from '@elysiajs/cors';
 import { Schemas, CreateJobInputType } from '@clipper/contracts';
-import { createLogger } from '@clipper/common';
+import { createLogger, readEnv, readIntEnv, requireEnv } from '@clipper/common';
 import { InMemoryJobsRepo, InMemoryJobEventsRepo } from '@clipper/data';
 import { PgBossQueueAdapter } from '@clipper/queue';
 
-const log = createLogger((process.env.LOG_LEVEL as any) || 'info').with({
+const log = createLogger((readEnv('LOG_LEVEL') as any) || 'info').with({
     mod: 'api',
 });
 
 const jobsRepo = new InMemoryJobsRepo();
 const eventsRepo = new InMemoryJobEventsRepo();
 const queue = new PgBossQueueAdapter({
-    connectionString: process.env.DATABASE_URL!,
+    connectionString: requireEnv('DATABASE_URL'),
 });
 await queue.start();
 
@@ -49,7 +49,7 @@ export const app = new Elysia()
         const id = crypto.randomUUID();
         const startSec = tcToSec(input.start);
         const endSec = tcToSec(input.end);
-        if (endSec - startSec > Number(process.env.MAX_CLIP_SECONDS || 120)) {
+        if (endSec - startSec > Number(readIntEnv('MAX_CLIP_SECONDS', 120))) {
             set.status = 400;
             return {
                 error: {
@@ -89,13 +89,13 @@ export const app = new Elysia()
             status: row.status,
             expiresAt: new Date(
                 Date.now() +
-                    Number(process.env.RETENTION_HOURS || 72) * 3600_000
+                    Number(readIntEnv('RETENTION_HOURS', 72)) * 3600_000
             ).toISOString(),
         };
     });
 
 if (import.meta.main) {
-    const port = Number(process.env.PORT || 3000);
+    const port = Number(readIntEnv('PORT', 3000));
     const server = Bun.serve({ fetch: app.fetch, port });
     log.info('API started', { port });
     const stop = async () => {

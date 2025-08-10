@@ -10,7 +10,7 @@ import { writeFile, unlink } from 'node:fs/promises';
 import { cleanupExpiredJobs } from '../src/cleanup';
 import { DrizzleApiKeysRepo } from '../src/api-keys';
 
-const hasDb = !!process.env.DATABASE_URL;
+const hasDb = !!readEnv('DATABASE_URL');
 
 // Supabase envs (core: url + service key)
 const SUPABASE_URL = readEnv('SUPABASE_URL');

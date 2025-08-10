@@ -1,7 +1,13 @@
 import PgBoss from 'pg-boss';
-import { createLogger, type LogLevel } from '@clipper/common';
+import {
+    createLogger,
+    type LogLevel,
+    readEnv,
+    readIntEnv,
+    requireEnv,
+} from '@clipper/common';
 
-const envLevel = process.env.LOG_LEVEL;
+const envLevel = readEnv('LOG_LEVEL');
 const level: LogLevel =
     envLevel === 'debug' ||
     envLevel === 'info' ||
@@ -18,14 +24,14 @@ export async function startDlqConsumer(opts?: {
     concurrency?: number;
 }) {
     const connectionString =
-        opts?.connectionString || process.env.DATABASE_URL!;
-    const schema = opts?.schema || process.env.PG_BOSS_SCHEMA || 'pgboss';
+        opts?.connectionString || requireEnv('DATABASE_URL');
+    const schema = opts?.schema || readEnv('PG_BOSS_SCHEMA') || 'pgboss';
     const topic = (opts?.queueName ||
-        process.env.QUEUE_NAME ||
+        readEnv('QUEUE_NAME') ||
         'clips') as string;
     const dlqTopic = `${topic}.dlq`;
     const concurrency = Number(
-        opts?.concurrency || process.env.QUEUE_CONCURRENCY || 2
+        opts?.concurrency || readIntEnv('QUEUE_CONCURRENCY', 2)
     );
 
     const boss = new PgBoss({ connectionString, schema });

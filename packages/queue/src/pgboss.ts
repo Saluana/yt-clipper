@@ -1,4 +1,5 @@
 import PgBoss from 'pg-boss';
+import { readEnv, readIntEnv } from '@clipper/common';
 import type { QueueAdapter, QueueMessage, QueuePriority } from './types';
 
 const priorityMap: Record<QueuePriority, number> = {
@@ -30,7 +31,7 @@ export class PgBossQueueAdapter implements QueueAdapter {
             maxAttempts?: number;
         }
     ) {
-        this.topic = opts.queueName ?? process.env.QUEUE_NAME ?? 'clips';
+        this.topic = opts.queueName ?? readEnv('QUEUE_NAME') ?? 'clips';
         this.dlqTopic = `${this.topic}.dlq`;
     }
 
@@ -38,7 +39,7 @@ export class PgBossQueueAdapter implements QueueAdapter {
         if (this.boss) return;
         this.boss = new PgBoss({
             connectionString: this.opts.connectionString,
-            schema: this.opts.schema ?? process.env.PG_BOSS_SCHEMA ?? 'pgboss',
+            schema: this.opts.schema ?? readEnv('PG_BOSS_SCHEMA') ?? 'pgboss',
         });
         this.boss.on('error', (err) => {
             // Increment error metric on boss-level errors
@@ -52,14 +53,15 @@ export class PgBossQueueAdapter implements QueueAdapter {
             1,
             Math.floor(
                 Number(
-                    process.env.QUEUE_VISIBILITY_SEC ||
-                        this.opts.visibilityTimeoutSec ||
-                        90
+                    readIntEnv(
+                        'QUEUE_VISIBILITY_SEC',
+                        this.opts.visibilityTimeoutSec ?? 90
+                    )
                 )
             )
         );
         const retryLimit = Number(
-            process.env.QUEUE_MAX_ATTEMPTS || this.opts.maxAttempts || 3
+            readIntEnv('QUEUE_MAX_ATTEMPTS', this.opts.maxAttempts ?? 3)
         );
         try {
             await this.boss.createQueue(this.topic, {
@@ -91,14 +93,15 @@ export class PgBossQueueAdapter implements QueueAdapter {
             Math.floor(
                 opts?.timeoutSec ??
                     Number(
-                        process.env.QUEUE_VISIBILITY_SEC ||
-                            this.opts.visibilityTimeoutSec ||
-                            90
+                        readIntEnv(
+                            'QUEUE_VISIBILITY_SEC',
+                            this.opts.visibilityTimeoutSec ?? 90
+                        )
                     )
             )
         );
         const attemptLimit = Number(
-            process.env.QUEUE_MAX_ATTEMPTS || this.opts.maxAttempts || 3
+            readIntEnv('QUEUE_MAX_ATTEMPTS', this.opts.maxAttempts ?? 3)
         );
         const priority = priorityMap[msg.priority ?? 'normal'];
         await this.boss!.send(this.topic, msg as object, {
@@ -116,7 +119,7 @@ export class PgBossQueueAdapter implements QueueAdapter {
     ): Promise<void> {
         if (!this.boss) await this.start();
         const batchSize = Number(
-            process.env.QUEUE_CONCURRENCY || this.opts.concurrency || 4
+            readIntEnv('QUEUE_CONCURRENCY', this.opts.concurrency ?? 4)
         );
         await this.boss!.work<QueueMessage>(
             this.topic,

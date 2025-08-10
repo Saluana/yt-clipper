@@ -1,7 +1,8 @@
 import { describe, test, it, expect, beforeAll, afterAll } from 'vitest';
 import { PgBossQueueAdapter } from '@clipper/queue';
+import { readEnv } from '@clipper/common';
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL = readEnv('DATABASE_URL');
 
 describe('PgBossQueueAdapter integration', () => {
     if (!DATABASE_URL) {
