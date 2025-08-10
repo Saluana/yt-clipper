@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { storageKeys, createSupabaseStorageRepo } from '../src/storage';
 import { createClient } from '@supabase/supabase-js';
 import { writeFile, unlink } from 'node:fs/promises';
+import { cleanupExpiredJobs } from '../src/cleanup';
 
 const hasDb = !!process.env.DATABASE_URL;
 
@@ -82,6 +83,75 @@ describe('Data Layer Integration', () => {
             // cleanup DB row to keep tests idempotent
             await db.delete(jobs).where(eq(jobs.id, jobId));
         });
+
+        test("cleanup job: dry-run returns items but doesn't delete", async () => {
+            const db = createDb();
+            const jobsRepo = new DrizzleJobsRepo(db);
+
+            const jobId = crypto.randomUUID();
+            const created = await jobsRepo.create({
+                id: jobId,
+                status: 'done',
+                progress: 100,
+                sourceType: 'upload',
+                startSec: 0,
+                endSec: 1,
+                withSubtitles: false,
+                burnSubtitles: false,
+            });
+            // expire it
+            const past = new Date(Date.now() - 1000);
+            await db
+                .update(jobs)
+                .set({ expiresAt: past })
+                .where(eq(jobs.id, jobId));
+
+            const res = await cleanupExpiredJobs({
+                dryRun: true,
+                batchSize: 10,
+            });
+            expect(res.scanned).toBeGreaterThan(0);
+            const item = res.items.find((i) => i.jobId === jobId);
+            expect(item).toBeTruthy();
+
+            // should still exist
+            const still = await jobsRepo.get(jobId);
+            expect(still).not.toBeNull();
+
+            // cleanup row for test hygiene
+            await db.delete(jobs).where(eq(jobs.id, jobId));
+        });
+
+        test('cleanup job: deletes expired job from DB', async () => {
+            const db = createDb();
+            const jobsRepo = new DrizzleJobsRepo(db);
+
+            const jobId = crypto.randomUUID();
+            await jobsRepo.create({
+                id: jobId,
+                status: 'done',
+                progress: 100,
+                sourceType: 'upload',
+                startSec: 0,
+                endSec: 1,
+                withSubtitles: false,
+                burnSubtitles: false,
+                resultSrtKey: `results/${jobId}/clip.srt`,
+            });
+            await db
+                .update(jobs)
+                .set({ expiresAt: new Date(Date.now() - 1000) })
+                .where(eq(jobs.id, jobId));
+
+            const res = await cleanupExpiredJobs({
+                dryRun: false,
+                batchSize: 10,
+                storage: null,
+            });
+            expect(res.deletedJobs).toBeGreaterThan(0);
+            const after = await jobsRepo.get(jobId);
+            expect(after).toBeNull();
+        });
     } else {
         test.skip('DB tests skipped (DATABASE_URL missing)', () => {});
     }
@@ -154,6 +224,79 @@ describe('Data Layer Integration', () => {
                         .deleteBucket(bucketName)
                         .catch(() => void 0);
                 }
+            }
+        }, 60_000);
+
+        test('cleanup job: removes storage objects when configured', async () => {
+            const jobId = crypto.randomUUID();
+            const tmp = `./tmp-${jobId}.srt`;
+            const key = storageKeys.resultSrt(jobId);
+            const supabase = createClient(
+                SUPABASE_URL!,
+                SUPABASE_SERVICE_ROLE_KEY!
+            );
+            const bucketName = SUPABASE_STORAGE_BUCKET ?? `ytc_test_${jobId}`;
+            let createdBucket = false;
+            if (!SUPABASE_STORAGE_BUCKET) {
+                const { error } = await supabase.storage.createBucket(
+                    bucketName,
+                    { public: false }
+                );
+                if (error && !String(error.message).includes('already exists'))
+                    throw new Error(error.message);
+                createdBucket = true;
+            }
+
+            // upload a file via repo
+            const bun: any = (globalThis as any).Bun;
+            if (bun?.write) {
+                await bun.write(tmp, '1\n00:00:00,000 --> 00:00:00,500\nHello');
+            } else {
+                await writeFile(
+                    tmp,
+                    '1\n00:00:00,000 --> 00:00:00,500\nHello',
+                    'utf8'
+                );
+            }
+            const repo = createSupabaseStorageRepo({ bucket: bucketName });
+            await repo.upload(tmp, key, 'application/x-subrip');
+
+            // create an expired job referencing the object
+            const db = createDb();
+            const jobsRepo = new DrizzleJobsRepo(db);
+            await jobsRepo.create({
+                id: jobId,
+                status: 'done',
+                progress: 100,
+                sourceType: 'upload',
+                startSec: 0,
+                endSec: 1,
+                withSubtitles: false,
+                burnSubtitles: false,
+                resultSrtKey: key,
+            });
+            await db
+                .update(jobs)
+                .set({ expiresAt: new Date(Date.now() - 1000) })
+                .where(eq(jobs.id, jobId));
+
+            const res = await cleanupExpiredJobs({
+                dryRun: false,
+                batchSize: 10,
+                storage: repo,
+            });
+            expect(res.deletedJobs).toBe(1);
+            // verify object removed by attempting to sign (should fail)
+            await expect(repo.sign(key, 60)).rejects.toThrow();
+
+            await unlink(tmp).catch(() => void 0);
+            if (createdBucket) {
+                await supabase.storage
+                    .emptyBucket(bucketName)
+                    .catch(() => void 0);
+                await supabase.storage
+                    .deleteBucket(bucketName)
+                    .catch(() => void 0);
             }
         }, 60_000);
     } else {

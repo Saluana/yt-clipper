@@ -40,9 +40,9 @@
 
 ## 5. Cleanup and retention
 
--   [ ] Implement a cleanup job: delete expired `jobs` and cascade `job_events`; remove result objects
+-   [x] Implement a cleanup job: delete expired `jobs` and cascade `job_events`; remove result objects
     -   Requirements: 4
--   [ ] Add a dry-run and rate-limit option for deletes
+-   [x] Add a dry-run and rate-limit option for deletes
     -   Requirements: 4, 9
 
 ## 6. Testing
