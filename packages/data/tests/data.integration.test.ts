@@ -170,6 +170,83 @@ describe('Data Layer Integration', () => {
 
     // Supabase storage integration: only requires core envs; auto-creates a temp bucket if missing
     if (hasSupabaseCore) {
+        test('e2e: create → transition → events → sign URL', async () => {
+            const db = createDb();
+            const jobsRepo = new DrizzleJobsRepo(db);
+            const eventsRepo = new DrizzleJobEventsRepo(db);
+
+            const jobId = crypto.randomUUID();
+            const tmp = `./tmp-${jobId}.srt`;
+            const key = storageKeys.resultSrt(jobId);
+            const supabase = createClient(
+                SUPABASE_URL!,
+                SUPABASE_SERVICE_ROLE_KEY!
+            );
+            const bucketName = SUPABASE_STORAGE_BUCKET ?? `ytc_test_${jobId}`;
+            let createdBucket = false;
+            if (!SUPABASE_STORAGE_BUCKET) {
+                const { error } = await supabase.storage.createBucket(
+                    bucketName,
+                    { public: false }
+                );
+                if (error && !String(error.message).includes('already exists'))
+                    throw new Error(error.message);
+                createdBucket = true;
+            }
+
+            // create job
+            await jobsRepo.create({
+                id: jobId,
+                status: 'queued',
+                progress: 0,
+                sourceType: 'upload',
+                startSec: 0,
+                endSec: 2,
+                withSubtitles: false,
+                burnSubtitles: false,
+                resultSrtKey: key,
+            });
+
+            // transition + event
+            await jobsRepo.transition(jobId, 'processing', {
+                type: 'status:processing',
+                data: { step: 'claim' },
+            });
+            await eventsRepo.add({
+                jobId,
+                ts: new Date().toISOString(),
+                type: 'progress',
+                data: { pct: 5 },
+            });
+
+            // upload artifact then sign
+            const bun: any = (globalThis as any).Bun;
+            if (bun?.write) {
+                await bun.write(tmp, '1\n00:00:00,000 --> 00:00:00,500\nHello');
+            } else {
+                await writeFile(
+                    tmp,
+                    '1\n00:00:00,000 --> 00:00:00,500\nHello',
+                    'utf8'
+                );
+            }
+            const repo = createSupabaseStorageRepo({ bucket: bucketName });
+            await repo.upload(tmp, key, 'application/x-subrip');
+            const url = await repo.sign(key, 60);
+            expect(typeof url).toBe('string');
+
+            await unlink(tmp).catch(() => void 0);
+            await repo.remove(key).catch(() => void 0);
+            await db.delete(jobs).where(eq(jobs.id, jobId));
+            if (createdBucket) {
+                await supabase.storage
+                    .emptyBucket(bucketName)
+                    .catch(() => void 0);
+                await supabase.storage
+                    .deleteBucket(bucketName)
+                    .catch(() => void 0);
+            }
+        }, 60_000);
         test('storage repo: upload, sign, remove (cleanup after)', async () => {
             const jobId = crypto.randomUUID();
             const key = storageKeys.resultSrt(jobId);
