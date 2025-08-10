@@ -4,16 +4,16 @@
 
 ## 1. Scaffolding & Config
 
--   [ ] Add `SCRATCH_DIR` to common config with sane default (`/tmp/ytc`).
--   [ ] Define envs: `ENABLE_YTDLP`, `MAX_INPUT_MB`, `MAX_CLIP_INPUT_DURATION_SEC`, `ALLOWLIST_HOSTS`.
--   [ ] Export a `SourceResolver` interface in `@clipper/data` or a new `media-io` package.
+-   [x] Add `SCRATCH_DIR` to common config with sane default (`/tmp/ytc`).
+-   [x] Define envs: `ENABLE_YTDLP`, `MAX_INPUT_MB`, `MAX_CLIP_INPUT_DURATION_SEC`, `ALLOWLIST_HOSTS`.
+-   [x] Export a `SourceResolver` interface in `@clipper/data` or a new `media-io` package.
 
 ## 2. Implement Resolver (upload path)
 
--   [ ] Create per-job scratch dir `${SCRATCH_DIR}/sources/{jobId}`.
--   [ ] Implement Supabase download streaming to `source.<ext>`.
--   [ ] Emit metrics: `mediaio.download.bytes`.
--   [ ] Return `{ localPath, cleanup, meta }` after ffprobe validation.
+-   [x] Create per-job scratch dir `${SCRATCH_DIR}/sources/{jobId}`.
+-   [x] Implement Supabase download streaming to `source.<ext>`.
+-   [x] Emit metrics: `mediaio.download.bytes`.
+-   [x] Return `{ localPath, cleanup, meta }` after ffprobe validation.
 -   Requirements: 1, 4, 5, 6
 
 ## 3. Implement Resolver (YouTube path — gated)

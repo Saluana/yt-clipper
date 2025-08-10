@@ -95,6 +95,8 @@ packages/
       api-keys.ts
       cleanup.ts
       index.ts
+      media-io-upload.ts
+      media-io.ts
       repo.ts
       storage.ts
     drizzle.config.ts
@@ -116,11 +118,19 @@ packages/
     package.json
     tsconfig.json
 planning/
+  chatmode/
+    design.md
+    requirements.md
+    tasks.md
   data-layer/
     design.md
     requirements.md
     tasks.md
   foundations/
+    design.md
+    requirements.md
+    tasks.md
+  media-io/
     design.md
     requirements.md
     tasks.md
@@ -145,6 +155,232 @@ vitest.setup.ts
 ```
 
 # Files
+
+## File: packages/data/src/media-io-upload.ts
+````typescript
+import { createSupabaseStorageRepo } from './storage';
+import {
+    readEnv,
+    readIntEnv,
+    createLogger,
+    noopMetrics,
+    type Metrics,
+} from '@clipper/common';
+import type { ResolveResult as SharedResolveResult } from './media-io';
+
+type ResolveJob = {
+    id: string;
+    sourceType: 'upload';
+    sourceKey: string; // required for upload path
+};
+
+export type FfprobeMeta = {
+    durationSec: number;
+    sizeBytes: number;
+    container?: string;
+};
+
+export type UploadResolveResult = SharedResolveResult;
+
+async function streamToFile(
+    url: string,
+    outPath: string,
+    metrics: Metrics,
+    labels: Record<string, string>
+) {
+    const res = await fetch(url);
+    if (!res.ok || !res.body) {
+        throw new Error(`DOWNLOAD_FAILED: status=${res.status}`);
+    }
+    const counting = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+            metrics.inc('mediaio.download.bytes', chunk.byteLength, labels);
+            controller.enqueue(chunk);
+        },
+    });
+    const stream = res.body.pipeThrough(counting);
+    await Bun.write(outPath, new Response(stream));
+}
+
+async function ffprobe(localPath: string): Promise<FfprobeMeta> {
+    const args = [
+        '-v',
+        'error',
+        '-print_format',
+        'json',
+        '-show_format',
+        '-show_streams',
+        localPath,
+    ];
+    const proc = Bun.spawn(['ffprobe', ...args], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+    });
+    const stdout = await new Response(proc.stdout).text();
+    const exit = await proc.exited;
+    if (exit !== 0) throw new Error('FFPROBE_FAILED');
+    const json = JSON.parse(stdout);
+    const durationSec = json?.format?.duration
+        ? Number(json.format.duration)
+        : 0;
+    const sizeBytes = json?.format?.size
+        ? Number(json.format.size)
+        : Bun.file(localPath).size;
+    const container = json?.format?.format_name as string | undefined;
+    return { durationSec, sizeBytes, container };
+}
+
+export async function resolveUploadSource(
+    job: ResolveJob,
+    deps: { metrics?: Metrics } = {}
+): Promise<UploadResolveResult> {
+    const logger = createLogger((readEnv('LOG_LEVEL') as any) ?? 'info').with({
+        comp: 'mediaio',
+        jobId: job.id,
+    });
+    const metrics = deps.metrics ?? noopMetrics;
+
+    const SCRATCH_DIR = readEnv('SCRATCH_DIR') ?? '/tmp/ytc';
+    const MAX_MB = readIntEnv('MAX_INPUT_MB', 1024)!;
+    const MAX_DUR = readIntEnv('MAX_CLIP_INPUT_DURATION_SEC', 7200)!;
+
+    const m = job.sourceKey.match(/\.([A-Za-z0-9]+)$/);
+    const ext = m ? `.${m[1]}` : '.mp4';
+    const baseDir = `${SCRATCH_DIR.replace(/\/$/, '')}/sources/${job.id}`;
+    const localPath = `${baseDir}/source${ext}`;
+
+    logger.info('resolving upload to local path');
+    {
+        const p = Bun.spawn(['mkdir', '-p', baseDir]);
+        const code = await p.exited;
+        if (code !== 0) throw new Error('MKDIR_FAILED');
+    }
+
+    // Sign and stream download
+    const storage = createSupabaseStorageRepo();
+    const signedUrl = await storage.sign(job.sourceKey);
+    await streamToFile(signedUrl, localPath, metrics, { jobId: job.id });
+
+    // ffprobe validation
+    const meta = await ffprobe(localPath);
+
+    if (meta.durationSec > MAX_DUR || meta.sizeBytes > MAX_MB * 1024 * 1024) {
+        // cleanup on violation
+        const p = Bun.spawn(['rm', '-rf', baseDir]);
+        await p.exited;
+        throw new Error('INPUT_TOO_LARGE');
+    }
+
+    const cleanup = async () => {
+        const p = Bun.spawn(['rm', '-rf', baseDir]);
+        await p.exited;
+    };
+
+    logger.info('upload resolved', {
+        durationSec: meta.durationSec,
+        sizeBytes: meta.sizeBytes,
+    });
+    return { localPath, cleanup, meta };
+}
+````
+
+## File: packages/data/src/media-io.ts
+````typescript
+export interface ResolveResult {
+    localPath: string;
+    cleanup: () => Promise<void>;
+    meta: { durationSec: number; sizeBytes: number; container?: string };
+}
+
+export interface SourceResolver {
+    resolve(job: {
+        id: string;
+        sourceType: 'upload' | 'youtube';
+        sourceKey?: string; // Supabase path (for uploads)
+        sourceUrl?: string; // External URL (YouTube)
+    }): Promise<ResolveResult>;
+}
+````
+
+## File: planning/chatmode/design.md
+````markdown
+<!-- artifact_id: a6a4c140-6e4a-4b1a-8d3f-9a0e1c8b1f3a -->
+
+# design.md — Task 1: Media IO scaffolding
+
+## Overview
+
+Define and validate environment variables that the Media IO layer will use, plus publish minimal interfaces for the resolver, without implementing behavior yet.
+
+## Components
+
+-   Common Config (packages/common/src/config.ts)
+    -   Adds: SCRATCH_DIR, MAX_INPUT_MB, MAX_CLIP_INPUT_DURATION_SEC, ALLOWLIST_HOSTS, ENABLE_YTDLP (existing) with parsing.
+-   Data package types (packages/data/src/media-io.ts)
+    -   Exports SourceResolver and ResolveResult.
+
+## Error Handling
+
+-   Config loader rejects invalid types; defaults applied for absent optional values.
+
+## Testing
+
+-   Build check as smoke validation. Follow-ups: add unit tests asserting defaults for new keys when absent.
+````
+
+## File: planning/chatmode/requirements.md
+````markdown
+<!-- artifact_id: 7f84a2f6-24d5-4a3e-9b8b-1d3f93f3d5b1 -->
+
+# requirements.md — Task 1: Media IO scaffolding
+
+## Introduction
+
+Set up environment variables and core types required by the Media IO Source Resolver so subsequent implementation can proceed safely and consistently.
+
+## Functional Requirements
+
+1. Config and env keys
+
+-   As a developer, I want new Media IO env keys added to common config, so the resolver can read them in a typed, validated way.
+    -   Acceptance Criteria:
+        -   WHEN loading config THEN system SHALL accept SCRATCH_DIR, ENABLE_YTDLP, MAX_INPUT_MB, MAX_CLIP_INPUT_DURATION_SEC, ALLOWLIST_HOSTS with defaults.
+
+2. Types export
+
+-   As a developer, I want SourceResolver/ResolveResult types exported from the data package, so downstream code can depend on stable contracts.
+    -   Acceptance Criteria:
+        -   WHEN importing from @clipper/data THEN types SHALL be available.
+
+3. Developer envs
+
+-   As an operator, I want .env and .env.example updated with safe defaults, so local and CI runs configure consistently.
+    -   Acceptance Criteria:
+        -   New keys present with comments and defaults; no secrets leaked additionally.
+
+## Non-Functional
+
+-   Backward compatible with existing packages.
+-   Build passes across workspace.
+
+## Acceptance Summary
+
+-   New envs wired in config, sample env files updated, types exported, build green.
+````
+
+## File: planning/chatmode/tasks.md
+````markdown
+<!-- artifact_id: 2b0581c3-8a7c-4b3e-8b2f-2a6d3a7a8c3e -->
+
+# tasks.md — Task 1: Media IO scaffolding
+
+-   [x] Add SCRATCH_DIR, MAX_INPUT_MB, MAX_CLIP_INPUT_DURATION_SEC, ALLOWLIST_HOSTS to config schema (Requirements: 1)
+-   [x] Parse boolean/number envs correctly in loadConfig (Requirements: 1)
+-   [x] Update .env and .env.example with new keys and comments (Requirements: 3)
+-   [x] Create SourceResolver and ResolveResult interfaces in @clipper/data and export (Requirements: 2)
+-   [x] Build workspace to verify compilation
+-   [ ] Add unit tests for defaults and parsing (follow-up)
+````
 
 ## File: packages/api/package.json
 ````json
@@ -209,6 +445,11 @@ export const ConfigSchema = z.object({
     QUEUE_URL: z.string().url().optional(),
     ENABLE_YTDLP: z.boolean().default(false),
     CLIP_MAX_DURATION_SEC: z.number().int().positive().default(120),
+    // Media IO / Source Resolver
+    SCRATCH_DIR: z.string().default('/tmp/ytc'),
+    MAX_INPUT_MB: z.number().int().positive().default(1024),
+    MAX_CLIP_INPUT_DURATION_SEC: z.number().int().positive().default(7200),
+    ALLOWLIST_HOSTS: z.string().optional(),
 });
 
 export type AppConfig = z.infer<typeof ConfigSchema>;
@@ -221,6 +462,10 @@ export function loadConfig(
         ENABLE_YTDLP: env.ENABLE_YTDLP === 'true',
         CLIP_MAX_DURATION_SEC: env.CLIP_MAX_DURATION_SEC
             ? Number(env.CLIP_MAX_DURATION_SEC)
+            : undefined,
+        MAX_INPUT_MB: env.MAX_INPUT_MB ? Number(env.MAX_INPUT_MB) : undefined,
+        MAX_CLIP_INPUT_DURATION_SEC: env.MAX_CLIP_INPUT_DURATION_SEC
+            ? Number(env.MAX_CLIP_INPUT_DURATION_SEC)
             : undefined,
     });
     if (!parsed.success) {
@@ -2775,6 +3020,307 @@ Acceptance Criteria:
 -   Observability: Logger includes correlation, structured fields, and supports JSON output.
 ````
 
+## File: planning/media-io/design.md
+````markdown
+<!-- artifact_id: e2f5f9d7-33a2-4f9b-bc2a-2c2b2f90b3b1 -->
+
+# design.md — Media IO (Source Resolver)
+
+## Overview
+
+The Media IO component resolves inputs to a fast local path on NVMe for FFmpeg. It supports two modes: Supabase upload objects (primary path) and optional YouTube via yt-dlp behind a hard feature gate. It includes SSRF defenses, size/duration validation via ffprobe, deterministic temp paths, and a cleanup contract.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Job[(Job Record)] -->|sourceType, keys| Resolver
+  subgraph Resolver
+    DL[Downloader]
+    YT[YouTube Fetcher]
+    FP[ffprobe Validator]
+  end
+  DL --> FP
+  YT --> FP
+  FP --> OUT{localPath, cleanup}
+```
+
+Core components:
+
+-   Downloader: streams from Supabase Storage to local file
+-   YouTube Fetcher: runs yt-dlp with guarded args and allowlist validation
+-   ffprobe Validator: extracts `format.duration`, `format.size`, `streams` and enforces caps
+
+---
+
+## Components & Interfaces
+
+```ts
+export interface ResolveResult {
+    localPath: string;
+    cleanup: () => Promise<void>;
+    meta: { durationSec: number; sizeBytes: number; container?: string };
+}
+
+export interface SourceResolver {
+    resolve(job: {
+        id: string;
+        sourceType: 'upload' | 'youtube';
+        sourceKey?: string; // Supabase path
+        sourceUrl?: string; // YouTube URL
+    }): Promise<ResolveResult>;
+}
+```
+
+Errors (ServiceResult pattern):
+
+-   SOURCE_NOT_FOUND, YTDLP_DISABLED, INPUT_TOO_LARGE, SSRF_BLOCKED, DOWNLOAD_FAILED, FFPROBE_FAILED
+
+---
+
+## Env & Config
+
+-   SCRATCH_DIR (default: /tmp/ytc)
+-   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_STORAGE_BUCKET
+-   MAX_INPUT_MB (default: 1024)
+-   MAX_CLIP_INPUT_DURATION_SEC (default: 7200)
+-   ENABLE_YTDLP (default: false)
+-   ALLOWLIST_HOSTS (comma-separated domains for external fetch; optional)
+
+---
+
+## Implementation Details
+
+1. Scratch layout
+
+-   `${SCRATCH_DIR}/sources/{jobId}/` directory per job
+-   File name `source.<ext>` where ext derived from Supabase key or yt-dlp best container
+
+2. Supabase download
+
+-   Use @supabase/supabase-js with service role key
+-   Use createReadStream (if available) or range reads piped to fs.createWriteStream
+-   Emit metric `mediaio.download.bytes`
+
+3. YouTube fetch (gated)
+
+-   Validate URL: http(s) only, host allowlist (if set), DNS resolves to public IP; reject loopback/link-local/private
+-   Exec: `yt-dlp -f "bv*+ba/b" -o <dir>/source.%(ext)s --quiet --no-progress --no-cache-dir --no-part <url>`
+-   Enforce size by `--max-filesize <MAX_INPUT_MB>m` where supported; otherwise post-check
+
+4. ffprobe validation
+
+-   Exec: `ffprobe -v error -print_format json -show_format -show_streams <file>`
+-   Parse JSON, compute durationSec and sizeBytes
+-   Enforce caps; on failure, cleanup and return INPUT_TOO_LARGE
+
+5. Cleanup
+
+-   Return cleanup() which removes the per-job scratch dir
+-   On any error after file creation, attempt unlink/rmdir recursively
+
+6. Telemetry
+
+-   Surround resolve() with timer; log start/finish with jobId
+-   Emit `mediaio.resolve.duration_ms`, `mediaio.ffprobe.duration_ms`, `mediaio.ytdlp.duration_ms`
+
+---
+
+## Security Considerations
+
+-   All logs pass through redaction; never log full URLs or tokens
+-   SSRF guard on any external URL: block non-public IPs; optional domain allowlist
+-   Ensure yt-dlp process inherits a minimal env without secrets
+-   Validate file paths to avoid traversal beyond SCRATCH_DIR
+
+---
+
+## Testing Strategy
+
+-   Unit tests (mocked fs/exec):
+    -   resolves upload with existing file (simulated)
+    -   rejects when ENABLE_YTDLP=false
+    -   SSRF blocks private IP URL
+    -   ffprobe cap exceeded → INPUT_TOO_LARGE
+-   Integration tests (optional):
+    -   with Supabase test bucket, download small object and probe
+    -   with yt-dlp installed and ENABLE_YTDLP=true on CI, fetch a short public sample
+
+---
+
+## Sequence (resolve)
+
+```mermaid
+sequenceDiagram
+  participant W as Worker
+  participant R as Resolver
+  participant S as Supabase
+  participant P as ffprobe
+  W->>R: resolve(job)
+  alt upload
+    R->>S: download to scratch
+  else youtube
+    R->>R: gate + SSRF + yt-dlp fetch
+  end
+  R->>P: ffprobe file
+  P-->>R: meta{duration,size}
+  R-->>W: {localPath, cleanup, meta}
+```
+````
+
+## File: planning/media-io/requirements.md
+````markdown
+<!-- artifact_id: 9a0d7c1a-9e1c-4a4a-9d5a-3f1b1f7b3e4d -->
+
+# requirements.md — Media IO (Source Resolver)
+
+## Introduction
+
+Implement a robust Media IO layer that resolves an input source (upload or optional YouTube) to a local NVMe file for downstream FFmpeg processing. Enforce SSRF protections, size/duration caps via ffprobe, and integrate with Supabase Storage for uploads. Designed to operate under Bun/Node workers with predictable performance and security.
+
+---
+
+## Functional Requirements
+
+1. Source Resolution — Uploads
+
+-   As a worker, I want to download a job's uploaded source object from Supabase Storage to local NVMe, so that FFmpeg can read from a fast local path.
+    -   Acceptance Criteria:
+        -   WHEN job.sourceType = 'upload' AND sourceKey is set THEN resolver SHALL download `bucket/sources/{jobId}/source.*` to `${SCRATCH_DIR}/sources/{jobId}/source.*` and return { localPath, cleanup }.
+        -   IF the object is missing THEN resolver SHALL return a NOT_FOUND error with code `SOURCE_NOT_FOUND`.
+
+2. Source Resolution — YouTube (Optional)
+
+-   As an operator, I want YouTube fetching to be explicitly gated, so that ToS risks are mitigated.
+    -   Acceptance Criteria:
+        -   IF ENABLE_YTDLP != 'true' THEN resolver SHALL reject YouTube sources with `YTDLP_DISABLED`.
+        -   WHEN enabled, resolver SHALL invoke `yt-dlp` to fetch video to `${SCRATCH_DIR}/sources/{jobId}/source.mp4` (or best container), honoring size cap.
+
+3. SSRF Guard & Allowlist
+
+-   As a platform, I want to block SSRF and untrusted fetches, so that internal services aren’t probed.
+    -   Acceptance Criteria:
+        -   IF source is a URL (YouTube or otherwise) THEN resolver SHALL validate scheme http(s) only and reject private IPs, link-local, and loopback targets; optional ALLOWLIST_HOSTS env.
+
+4. Size/Duration Caps via ffprobe
+
+-   As a worker, I want to ensure inputs are within configured bounds, so that expensive jobs are rejected early.
+    -   Acceptance Criteria:
+        -   WHEN a source is resolved THEN resolver SHALL run `ffprobe` to retrieve duration, bitrate, and container info.
+        -   IF duration > MAX_CLIP_INPUT_DURATION_SEC or file size > MAX_INPUT_MB THEN resolver SHALL return `INPUT_TOO_LARGE`.
+
+5. Cleanup Contract
+
+-   As an operator, I want temporary files cleaned up, so that NVMe space is recycled.
+    -   Acceptance Criteria:
+        -   Resolver SHALL return a `cleanup()` that deletes the temp directory tree; on fatal errors, partial files SHALL be removed.
+
+6. Telemetry & Errors
+
+-   As a developer, I need structured logs and metrics for visibility.
+    -   Acceptance Criteria:
+        -   Resolver SHALL log start/finish with jobId and timing; redact sensitive fields.
+        -   Resolver SHALL emit metrics: `mediaio.resolve.duration_ms`, `mediaio.download.bytes`, `mediaio.ytdlp.duration_ms`, `mediaio.ffprobe.duration_ms`.
+
+---
+
+## Non-Functional Requirements
+
+-   Performance: downloads and yt-dlp should stream to disk with backpressure; avoid buffering entire files in memory.
+-   Security: never log full URLs or tokens; apply redaction layer.
+-   Portability: run under Bun or Node; shell out to `yt-dlp` and `ffprobe` with safe args.
+-   Idempotency: if file already exists and passes caps, reuse it.
+
+---
+
+## Dependencies
+
+-   Supabase Storage service role key (server-side only)
+-   ffprobe and optionally yt-dlp installed in PATH on worker nodes
+-   @clipper/common for logger, metrics, env
+
+---
+
+## Acceptance Summary
+
+-   Given a job, resolver returns a local file path or a clear error code without leaking secrets; respects feature gates and size/duration limits; cleans up after itself.
+````
+
+## File: planning/media-io/tasks.md
+````markdown
+<!-- artifact_id: 4e1d8c6a-5e5e-42f2-9f8f-1c9f49a1c7de -->
+
+# tasks.md — Media IO (Source Resolver)
+
+## 1. Scaffolding & Config
+
+-   [x] Add `SCRATCH_DIR` to common config with sane default (`/tmp/ytc`).
+-   [x] Define envs: `ENABLE_YTDLP`, `MAX_INPUT_MB`, `MAX_CLIP_INPUT_DURATION_SEC`, `ALLOWLIST_HOSTS`.
+-   [x] Export a `SourceResolver` interface in `@clipper/data` or a new `media-io` package.
+
+## 2. Implement Resolver (upload path)
+
+-   [x] Create per-job scratch dir `${SCRATCH_DIR}/sources/{jobId}`.
+-   [x] Implement Supabase download streaming to `source.<ext>`.
+-   [x] Emit metrics: `mediaio.download.bytes`.
+-   [x] Return `{ localPath, cleanup, meta }` after ffprobe validation.
+-   Requirements: 1, 4, 5, 6
+
+## 3. Implement Resolver (YouTube path — gated)
+
+-   [ ] Add gate check: reject with `YTDLP_DISABLED` when disabled.
+-   [ ] Implement SSRF guard (scheme, IP class, optional allowlist).
+-   [ ] Shell out to `yt-dlp` with guarded flags and output template.
+-   [ ] Enforce size/timeout; pick resulting file path.
+-   [ ] ffprobe validation and return.
+-   Requirements: 2, 3, 4, 6
+
+## 4. ffprobe Meta & Caps
+
+-   [ ] Exec ffprobe JSON; parse duration, size, container.
+-   [ ] Enforce `MAX_CLIP_INPUT_DURATION_SEC` and `MAX_INPUT_MB`.
+-   [ ] On violation: cleanup and return `INPUT_TOO_LARGE`.
+-   Requirements: 4, 6
+
+## 5. Cleanup & Idempotency
+
+-   [ ] If file already exists and passes caps: reuse; else overwrite.
+-   [ ] Provide cleanup() that recursively removes the scratch dir.
+-   Requirements: 5
+
+## 6. Telemetry & Logging
+
+-   [ ] Wrap resolve() with timer and structured logs.
+-   [ ] Emit: `mediaio.resolve.duration_ms`, `mediaio.ffprobe.duration_ms`, `mediaio.ytdlp.duration_ms`.
+-   [ ] Ensure redaction layer is applied to any URL logs.
+-   Requirements: 6, Security
+
+## 7. Tests
+
+-   [ ] Unit tests for gating, SSRF, cap enforcement, and cleanup.
+-   [ ] Integration tests (optional, guarded by envs) for upload download and yt-dlp path.
+-   Requirements: Testing Strategy
+
+## 8. Wiring & Docs
+
+-   [ ] Export resolver from package index and wire into worker pipeline before clipper.
+-   [ ] Update planning docs and READMEs with usage and envs.
+-   [ ] Add a small smoke test in worker to call resolver with a seeded upload.
+
+---
+
+Mappings:
+
+-   Req 1 → Tasks 2,4,5
+-   Req 2 → Task 3
+-   Req 3 → Task 3
+-   Req 4 → Task 4
+-   Req 5 → Task 5
+-   Req 6 → Task 6
+````
+
 ## File: planning/queue-layer/design.md
 ````markdown
 <!-- artifact_id: 5a5c1e9b-3f5f-4bf1-9a3c-1c1f1e9df0a3 -->
@@ -3773,6 +4319,7 @@ SUPABASE_URL=https://<your_project>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your_supabase_service_role_key>
 SUPABASE_SOURCES_BUCKET=sources
 SUPABASE_RESULTS_BUCKET=results
+SUPABASE_STORAGE_BUCKET=sources
 
 # --- Queue (pg-boss) ---
 QUEUE_PROVIDER=pgboss
@@ -3787,6 +4334,21 @@ GROQ_API_KEY=
 GROQ_MODEL=whisper-large-v3-turbo
 NODE_ENV=development
 DB_PASSWORD=
+
+# --- Media IO / Resolver ---
+# Local scratch directory for resolved sources (NVMe if available)
+SCRATCH_DIR=/tmp/ytc
+# Enable YouTube fetching via yt-dlp (false by default)
+ENABLE_YTDLP=false
+# Max input file size in megabytes (enforced by ffprobe / yt-dlp)
+MAX_INPUT_MB=1024
+# Max input duration in seconds (ffprobe validation)
+MAX_CLIP_INPUT_DURATION_SEC=7200
+# Optional comma-separated domain allowlist for external fetches
+ALLOWLIST_HOSTS=
+
+# Keep API clip limit for request validation (separate from input caps)
+CLIP_MAX_DURATION_SEC=120
 ````
 
 ## File: .gitignore
@@ -5368,6 +5930,8 @@ export * from './db/repos';
 export * from './storage';
 export * from './cleanup';
 export * from './api-keys';
+export * from './media-io';
+export { resolveUploadSource } from './media-io-upload';
 ````
 
 ## File: packages/data/package.json
