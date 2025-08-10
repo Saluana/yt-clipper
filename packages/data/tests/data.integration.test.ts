@@ -8,6 +8,7 @@ import { storageKeys, createSupabaseStorageRepo } from '../src/storage';
 import { createClient } from '@supabase/supabase-js';
 import { writeFile, unlink } from 'node:fs/promises';
 import { cleanupExpiredJobs } from '../src/cleanup';
+import { DrizzleApiKeysRepo } from '../src/api-keys';
 
 const hasDb = !!process.env.DATABASE_URL;
 
@@ -151,6 +152,24 @@ describe('Data Layer Integration', () => {
             expect(res.deletedJobs).toBeGreaterThan(0);
             const after = await jobsRepo.get(jobId);
             expect(after).toBeNull();
+        });
+
+        test('api keys: issue → verify → revoke', async () => {
+            // Skip if Bun.password not available under this test runtime
+            const bun: any = (globalThis as any).Bun;
+            if (!bun?.password) return; // skip silently
+
+            const repo = new DrizzleApiKeysRepo(createDb());
+            const { id, name, token } = await repo.issue('test-key');
+            expect(id).toBeTruthy();
+            expect(name).toBe('test-key');
+
+            const ok = await repo.verify(token);
+            expect(ok?.id).toBe(id);
+
+            await repo.revoke(id);
+            const again = await repo.verify(token);
+            expect(again).toBeNull();
         });
     } else {
         test.skip('DB tests skipped (DATABASE_URL missing)', () => {});

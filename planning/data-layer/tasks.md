@@ -47,23 +47,23 @@
 
 ## 6. Testing
 
--   [ ] Unit tests for repositories (happy path + error cases)
+-   [x] Unit tests for repositories (happy path + error cases)
     -   Requirements: 6, 8, 10
--   [ ] Integration test: create → transition → events → sign URLs
+-   [x] Integration test: create → transition → events → sign URLs
     -   Requirements: 1, 2, 5, 6
--   [ ] Cleanup test: insert expired rows → run cleanup → verify DB and storage
+-   [x] Cleanup test: insert expired rows → run cleanup → verify DB and storage
     -   Requirements: 4
 
 ## 7. Observability
 
--   [ ] Emit metrics: repo operation durations, error counts
+-   [x] Emit metrics: repo operation durations, error counts
     -   Requirements: 10
--   [ ] Structured logs with jobId correlation
+-   [x] Structured logs with jobId correlation
     -   Requirements: 2, 10
 
 ## 8. Security
 
--   [ ] Hash API keys with Argon2/Bcrypt; never store plaintext
+-   [x] Hash API keys with Bun.password; never store plaintext
     -   Requirements: 3, 9
--   [ ] Ensure parameterized queries and secret redaction in errors
+-   [x] Ensure parameterized queries and secret redaction in errors
     -   Requirements: 9

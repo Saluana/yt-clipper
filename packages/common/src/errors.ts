@@ -1,3 +1,4 @@
+import { redactSecrets } from './redact';
 export type ServiceErrorCode =
     | 'BAD_REQUEST'
     | 'UNAUTHORIZED'
@@ -40,7 +41,16 @@ export function err(
     details?: unknown,
     correlationId?: string
 ): Err {
-    return { ok: false, error: { code, message, details, correlationId } };
+    // Redact secrets in message/details
+    return {
+        ok: false,
+        error: {
+            code,
+            message: redactSecrets(message),
+            details: redactSecrets(details),
+            correlationId,
+        },
+    };
 }
 
 export function fromException(e: unknown, correlationId?: string): Err {

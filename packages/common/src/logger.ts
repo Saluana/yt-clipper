@@ -1,3 +1,4 @@
+import { redactSecrets } from './redact';
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface Logger {
@@ -18,9 +19,9 @@ function emit(
     const line = {
         level,
         ts: new Date().toISOString(),
-        msg,
-        ...base,
-        ...fields,
+        msg: redactSecrets(msg),
+        ...redactSecrets(base),
+        ...redactSecrets(fields ?? {}),
     };
     // eslint-disable-next-line no-console
     console[level === 'debug' ? 'log' : level](JSON.stringify(line));

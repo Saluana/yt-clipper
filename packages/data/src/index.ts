@@ -4,3 +4,4 @@ export * from './db/connection';
 export * from './db/repos';
 export * from './storage';
 export * from './cleanup';
+export * from './api-keys';

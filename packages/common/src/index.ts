@@ -5,3 +5,4 @@ export * from './time';
 export * from './state';
 export * from './env';
 export * from './metrics';
+export * from './redact';
