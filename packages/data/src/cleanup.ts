@@ -2,7 +2,8 @@ import { createDb } from './db/connection';
 import { jobs } from './db/schema';
 import { lte, isNotNull, and, eq, desc } from 'drizzle-orm';
 import type { StorageRepo } from './storage';
-import type { Logger } from '@clipper/common/src/logger';
+import type { Logger } from '@clipper/common';
+import { createLogger, noopMetrics, type Metrics } from '@clipper/common';
 
 export type CleanupOptions = {
     now?: Date;
@@ -11,6 +12,7 @@ export type CleanupOptions = {
     rateLimitDelayMs?: number;
     storage?: StorageRepo | null;
     logger?: Logger;
+    metrics?: Metrics;
 };
 
 export type CleanupItem = {
@@ -35,7 +37,9 @@ export async function cleanupExpiredJobs(
     const dryRun = opts.dryRun ?? true;
     const delay = opts.rateLimitDelayMs ?? 0;
     const storage = opts.storage ?? null;
-    const logger = opts.logger;
+    const logger =
+        opts.logger ?? createLogger('info').with({ comp: 'cleanup' });
+    const metrics = opts.metrics ?? noopMetrics;
 
     const rows = await db
         .select()
@@ -80,6 +84,8 @@ export async function cleanupExpiredJobs(
         try {
             await db.delete(jobs).where(eq(jobs.id, jobId));
             result.deletedJobs++;
+            metrics.inc('cleanup.jobs.deleted', 1);
+            logger.info('job deleted', { jobId });
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             result.errors.push({ jobId, stage: 'db', error: msg });

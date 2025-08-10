@@ -2,6 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import { createDb } from './connection';
 import { jobEvents, jobs } from './schema';
 import type { JobStatus } from '@clipper/contracts';
+import { createLogger, noopMetrics, type Metrics } from '@clipper/common';
 import type {
     JobEvent as RepoJobEvent,
     JobRow,
@@ -10,11 +11,16 @@ import type {
 } from '../repo';
 
 export class DrizzleJobsRepo implements JobsRepository {
-    constructor(private readonly db = createDb()) {}
+    private readonly logger = createLogger('info').with({ comp: 'jobsRepo' });
+    constructor(
+        private readonly db = createDb(),
+        private readonly metrics: Metrics = noopMetrics
+    ) {}
 
     async create(
         row: Omit<JobRow, 'createdAt' | 'updatedAt'>
     ): Promise<JobRow> {
+        const start = Date.now();
         const [rec] = await this.db
             .insert(jobs)
             .values({
@@ -36,26 +42,42 @@ export class DrizzleJobsRepo implements JobsRepository {
                 expiresAt: row.expiresAt ? new Date(row.expiresAt) : null,
             })
             .returning();
-        return toJobRow(rec);
+        const out = toJobRow(rec);
+        this.metrics.observe('repo.op.duration_ms', Date.now() - start, {
+            op: 'jobs.create',
+        });
+        this.logger.info('job created', { jobId: out.id });
+        return out;
     }
 
     async get(id: string): Promise<JobRow | null> {
+        const start = Date.now();
         const [rec] = await this.db
             .select()
             .from(jobs)
             .where(eq(jobs.id, id))
             .limit(1);
-        return rec ? toJobRow(rec) : null;
+        const out = rec ? toJobRow(rec) : null;
+        this.metrics.observe('repo.op.duration_ms', Date.now() - start, {
+            op: 'jobs.get',
+        });
+        return out;
     }
 
     async update(id: string, patch: Partial<JobRow>): Promise<JobRow> {
+        const start = Date.now();
         const [rec] = await this.db
             .update(jobs)
             .set(toJobsPatch(patch))
             .where(eq(jobs.id, id))
             .returning();
         if (!rec) throw new Error('NOT_FOUND');
-        return toJobRow(rec);
+        const row = toJobRow(rec);
+        this.metrics.observe('repo.op.duration_ms', Date.now() - start, {
+            op: 'jobs.update',
+        });
+        this.logger.info('job updated', { jobId: row.id });
+        return row;
     }
 
     async listByStatus(
@@ -63,6 +85,7 @@ export class DrizzleJobsRepo implements JobsRepository {
         limit = 50,
         offset = 0
     ): Promise<JobRow[]> {
+        const start = Date.now();
         const rows = await this.db
             .select()
             .from(jobs)
@@ -70,7 +93,11 @@ export class DrizzleJobsRepo implements JobsRepository {
             .orderBy(desc(jobs.createdAt))
             .limit(limit)
             .offset(offset);
-        return rows.map(toJobRow);
+        const out = rows.map(toJobRow);
+        this.metrics.observe('repo.op.duration_ms', Date.now() - start, {
+            op: 'jobs.listByStatus',
+        });
+        return out;
     }
 
     async transition(
@@ -78,7 +105,8 @@ export class DrizzleJobsRepo implements JobsRepository {
         next: JobStatus,
         event?: { type?: string; data?: Record<string, unknown> }
     ): Promise<JobRow> {
-        return await this.db.transaction(async (tx) => {
+        const start = Date.now();
+        const res = await this.db.transaction(async (tx) => {
             const [updated] = await tx
                 .update(jobs)
                 .set({ status: next, updatedAt: new Date() })
@@ -95,18 +123,30 @@ export class DrizzleJobsRepo implements JobsRepository {
             }
             return toJobRow(updated);
         });
+        this.metrics.observe('repo.op.duration_ms', Date.now() - start, {
+            op: 'jobs.transition',
+        });
+        this.logger.info('job transitioned', { jobId: id, next });
+        return res;
     }
 }
 
 export class DrizzleJobEventsRepo implements JobEventsRepository {
-    constructor(private readonly db = createDb()) {}
+    constructor(
+        private readonly db = createDb(),
+        private readonly metrics: Metrics = noopMetrics
+    ) {}
 
     async add(evt: RepoJobEvent): Promise<void> {
+        const start = Date.now();
         await this.db.insert(jobEvents).values({
             jobId: evt.jobId,
             ts: new Date(evt.ts),
             type: evt.type,
             data: evt.data ?? null,
+        });
+        this.metrics.observe('repo.op.duration_ms', Date.now() - start, {
+            op: 'events.add',
         });
     }
 
@@ -115,6 +155,7 @@ export class DrizzleJobEventsRepo implements JobEventsRepository {
         limit = 100,
         offset = 0
     ): Promise<RepoJobEvent[]> {
+        const start = Date.now();
         const rows = await this.db
             .select()
             .from(jobEvents)
@@ -122,12 +163,16 @@ export class DrizzleJobEventsRepo implements JobEventsRepository {
             .orderBy(desc(jobEvents.ts))
             .limit(limit)
             .offset(offset);
-        return rows.map((r) => ({
+        const out = rows.map((r) => ({
             jobId: r.jobId,
             ts: r.ts.toISOString(),
             type: r.type,
             data: (r.data as Record<string, unknown> | null) ?? undefined,
         }));
+        this.metrics.observe('repo.op.duration_ms', Date.now() - start, {
+            op: 'events.list',
+        });
+        return out;
     }
 }
 
